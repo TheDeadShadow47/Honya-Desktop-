@@ -1,0 +1,40 @@
+# Windows packaging for Honya Desktop. Build with `npm run dist` (see README).
+appId: app.honya.desktop
+productName: Honya Desktop
+copyright: Honya
+directories:
+  output: release
+  buildResources: assets
+
+# Everything is pre-bundled (main/preload by esbuild into dist-electron, renderer by Vite into dist) and SQLite is
+# Node's built-in node:sqlite, so only these files ship and no native module needs rebuilding.
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - assets/icon.png
+  - package.json
+  - "!**/*.map"
+asar: true
+npmRebuild: false
+
+win:
+  icon: assets/icon.png
+  executableName: Honya Desktop
+  target:
+    - target: nsis
+      arch: x64
+    - target: portable
+      arch: x64
+
+nsis:
+  artifactName: Honya-Desktop-Setup-${version}.${ext}
+  oneClick: false
+  perMachine: false            # per-user install: no administrator rights, updates can write freely
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Honya Desktop
+  deleteAppDataOnUninstall: false   # library, progress, plugins and downloads in %APPDATA%\Honya Desktop are kept
+
+portable:
+  artifactName: Honya-Desktop-Portable-${version}.${ext}

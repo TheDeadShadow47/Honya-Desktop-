@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Honya</title>
+    <script>
+      // Chromium swallows the stack of uncaught errors; re-log it so the smoke runs can report a
+      // usable trace instead of just the message.
+      window.addEventListener('error', (e) => console.error('[uncaught]', e.message, e.error?.stack ?? ''));
+      window.addEventListener('unhandledrejection', (e) =>
+        console.error('[unhandled rejection]', e.reason?.stack ?? String(e.reason)),
+      );
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

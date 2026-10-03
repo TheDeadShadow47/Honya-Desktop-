@@ -1,0 +1,44 @@
+{
+  "name": "honya-desktop",
+  "productName": "Honya Desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Honya Desktop - standalone Electron desktop reader compatible with LNReader plugins",
+  "author": "Honya",
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "node scripts/build-electron.mjs && vite build",
+    "start": "npm run build && electron .",
+    "test:smoke": "node scripts/smoke-core.mjs",
+    "test:plugins": "node scripts/e2e-madara.mjs",
+    "test:compat": "node scripts/plugin-compat.mjs",
+    "test:ui": "npm run build && node scripts/e2e-ui.mjs",
+    "test:i18n": "node scripts/i18n-audit.mjs",
+    "test": "npm run test:i18n && npm run test:discord && npm run test:smoke && npm run test:reader-logic && npm run test:plugins && npm run test:compat && npm run test:ui && npm run test:reader",
+    "dist": "npm run build && electron-builder --win",
+    "dist:installer": "npm run build && electron-builder --win nsis",
+    "dist:portable": "npm run build && electron-builder --win portable",
+    "pack": "npm run build && electron-builder --dir",
+    "test:discord": "node scripts/discord-test.mjs",
+    "test:reader": "npm run build && node scripts/e2e-reader.mjs",
+    "test:reader-logic": "node scripts/reader-logic-test.mjs"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.0.0",
+    "cheerio": "^1.2.0",
+    "dayjs": "^1.11.21",
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.0",
+    "entities": "^8.1.0",
+    "esbuild": "^0.25.0",
+    "htmlparser2": "^12.0.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "vite": "^7.0.0"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.19"
+  }
+}

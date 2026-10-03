@@ -1,0 +1,36 @@
+// Real LNReader repo -> install REAL boxnovel (madara: cheerio + dayjs + FormData/POST ajax) -> all API calls against fixture site.
+import * as db from '../core/db/database.js';
+import { createHost } from '../plugin-host/PluginHost.js';
+import { createPluginService } from '../plugin-host/pluginService.js';
+const REPO = 'https://raw.githubusercontent.com/LNReader/lnreader-plugins/plugins/v3.0.0/.dist/plugins.min.json';
+const PORT = process.env.FIXTURE_PORT;
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (input, init) => {
+  const url = typeof input === 'string' ? input : input.url;
+  if (!url.startsWith('https://novelnice.com')) return realFetch(input, init);
+  const res = await realFetch(`http://127.0.0.1:${PORT}` + url.slice('https://novelnice.com'.length), init);
+  Object.defineProperty(res, 'url', { value: url });
+  return res;
+};
+await db.initDatabase();
+const svc = createPluginService({ db, host: createHost() });
+const ok = (c, m) => { console.log(c ? 'ok  -' : 'FAIL -', m); if (!c) process.exitCode = 1; };
+const items = await svc.fetchRepository(REPO);
+await svc.install(items.find((p) => p.id === 'boxnovel'));
+const pop = await svc.popular('boxnovel', 1);
+ok(pop.length === 2 && pop[0].name === 'Lord of the Mysteries', `popular: ${JSON.stringify(pop.map((n) => n.name))}`);
+ok(pop[0].path === 'novel/lord-of-the-mysteries/' && /lotm|lord/.test(pop[0].cover), `path/cover normalised: ${pop[0].path} | ${pop[0].cover}`);
+const srch = await svc.search('boxnovel', 'reverend', 1);
+ok(srch.length === 1 && srch[0].name === 'Reverend Insanity', `search: ${JSON.stringify(srch.map((n) => n.name))}`);
+const nov = await svc.novel('boxnovel', pop[0].path);
+ok(nov.name === 'Lord of the Mysteries' && !/NEW/.test(nov.name), `novel name (badge stripped): "${nov.name}"`);
+ok(nov.author === 'Cuttlefish That Loves Diving' && nov.status === 'Ongoing', `author/status: ${nov.author} / ${nov.status}`);
+ok(/Fantasy/.test(nov.genres) && /Mystery/.test(nov.genres), `genres: ${nov.genres}`);
+ok(/Synthetic madara summary/.test(nov.summary), `summary: ${String(nov.summary).slice(0, 50)}`);
+ok(nov.chapters.length === 4 && nov.chapters[0].name === 'Chapter 1' && nov.chapters[3].name === 'Chapter 4', `chapters (ajax POST, reversed to oldest-first): ${nov.chapters.map((c) => c.name).join(', ')}`);
+ok(nov.chapters[0].path === 'novel/lord-of-the-mysteries/chapter-1/', `chapter path: ${nov.chapters[0].path}`);
+console.log('    releaseTime samples (dayjs):', nov.chapters.map((c) => c.releaseTime).join(' | '));
+ok(nov.chapters.every((c) => c.releaseTime && !/^L+$/.test(c.releaseTime)), 'dayjs produced a real, localized releaseTime for every chapter (not the literal "LL")');
+const html = await svc.chapter('boxnovel', nov.chapters[0].path);
+ok(/Madara chapter 1/.test(html) && /Line one/.test(html), `chapter html (cheerio .text-left): ${html.replace(/\n/g, ' ').slice(0, 90)}`);
+process.exit(process.exitCode ?? 0);
