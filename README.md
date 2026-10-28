@@ -112,6 +112,16 @@ Built packages are written to the `release/` directory.
 
 > **Note:** The installers are unsigned, so Windows SmartScreen may show a warning on first run. Select **More info → Run anyway** to continue.
 
+### 🔄 Updates
+
+Honya checks GitHub Releases for new stable versions (shortly after startup, then every few hours; **Settings → App Update** also has a manual check).
+
+- **Installed version (NSIS):** you are told about the new version and its release notes, choose when to download it, then choose **Install and restart**. Nothing is downloaded or installed without your approval.
+- **Portable version:** it cannot replace itself while running, so Honya shows the new version and release notes and links to the download; you replace the file yourself.
+- Your library, settings, reading progress, plugins and downloads live outside the install folder and are not touched by an update.
+
+Maintainers: see [docs/UPDATES.md](docs/UPDATES.md) for the release procedure (the files that must be attached to each GitHub release).
+
 ---
 
 ## 🧪 Development
@@ -121,7 +131,9 @@ Built packages are written to the `release/` directory.
 | Core (database, plugins, backup/restore, persistence) | `npm run test:smoke` |
 | Plugin compatibility | `npm run test:compat` · `npm run test:plugins` |
 | Reader | `npm run test:reader-logic` · `npm run test:reader` |
+| Source browsing pagination | `npm run test:catalog-paging` |
 | UI | `npm run test:ui` |
+| App updater | `npm run test:app-update` · `npm run test:app-update-ui` |
 | Internationalization audit | `npm run test:i18n` |
 | Discord integration | `npm run test:discord` |
 | Everything | `npm test` |

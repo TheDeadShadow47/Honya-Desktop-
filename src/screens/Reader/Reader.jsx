@@ -178,7 +178,7 @@ export default function Reader({ param: chapterId }) {
         if (settingsRef.current.reader.markReadOnOpen) db.markChapterRead(chapter.id, true).catch(() => {});
         session
           .start({
-            novel: { id: nv?.id, title: nv?.title },
+            novel: { id: nv?.id, title: nv?.title, cover: nv?.cover },
             chapter: { id: chapter.id, name: chapter.name, number: chapter.number },
           })
           .catch(() => {});
@@ -307,7 +307,7 @@ export default function Reader({ param: chapterId }) {
       if (settingsRef.current.reader.markReadOnOpen) db.markChapterRead(seg.id, true).catch(() => {});
       session
         .chapter({
-          novel: { id: novelRef.current?.id, title: novelRef.current?.title },
+          novel: { id: novelRef.current?.id, title: novelRef.current?.title, cover: novelRef.current?.cover },
           chapter: { id: seg.id, name: seg.chapter.name, number: seg.chapter.number },
         })
         .catch(() => {});

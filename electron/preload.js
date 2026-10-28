@@ -1,4 +1,4 @@
-// Sandboxed preload: exposes one narrow invoke() bridge plus two main->renderer event streams.
+// Sandboxed preload: exposes one narrow invoke() bridge plus three main->renderer event streams.
 // No Node APIs reach the renderer.
 import { contextBridge, ipcRenderer } from 'electron';
 
@@ -12,5 +12,6 @@ contextBridge.exposeInMainWorld('honya', {
   invoke: (channel, ...args) => ipcRenderer.invoke('honya:invoke', channel, args),
   onDownloadState: on('honya:downloadState'),
   onLibraryUpdate: on('honya:libraryUpdate'),
+  onAppUpdateState: on('honya:appUpdateState'),
   platform: process.platform,
 });

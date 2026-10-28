@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, dialog, net } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import * as db from '../core/db/database.js';
@@ -10,6 +10,15 @@ import { createReadingSessionBus } from '../services/readingSession.js';
 import { attachDiscord } from '../integrations/discord/index.js';
 import * as backup from '../core/backup/backup.js';
 import { DEFAULTS } from '../core/settings/defaults.js';
+import pkg from '../package.json';
+import {
+  UpdateError,
+  createAppUpdater,
+  createElectronUpdaterBackend,
+  createGithubReleaseBackend,
+  detectDistribution,
+  parseRepository,
+} from '../services/appUpdater.js';
 
 // __dirname is provided by the CJS bundle (see scripts/build-electron.mjs).
 const DEV_URL = (!app.isPackaged && process.env.HONYA_DEV_URL) || null; // a packaged app never talks to a dev server
@@ -81,6 +90,90 @@ const libraryUpdate = createLibraryUpdate({
     void notifyLibraryUpdate(payload);
   },
 });
+
+// App self-update (see services/appUpdater.js and docs/UPDATES.md). Installed build: electron-updater + GitHub Releases;
+// portable build: detect + link only; development/test runs: disabled. It never touches the user-data folder.
+function createRuntimeAppUpdater() {
+  const repo = parseRepository(pkg);
+  const hasUpdateConfig = app.isPackaged && fs.existsSync(path.join(process.resourcesPath, 'app-update.yml'));
+  let distribution = detectDistribution({ isPackaged: app.isPackaged, platform: process.platform, env: process.env, hasUpdateConfig });
+  let apiBase;
+  let startupDelayMs;
+  let openExternal = (url) => shell.openExternal(url);
+  let scriptedBackend = null;
+  // Test hook (smoke mode ONLY, like HONYA_TEST_HOST_MAP): point the release check at a local fixture server and record
+  // opened links instead of launching a browser. Never active in normal runs.
+  if (SMOKE) {
+    if (process.env.HONYA_UPDATE_TEST_API) {
+      distribution = { kind: 'portable', mode: 'manual' };
+      apiBase = process.env.HONYA_UPDATE_TEST_API;
+      startupDelayMs = 300;
+      openExternal = async (url) => console.log('OPEN_EXTERNAL', url);
+    } else if (process.env.HONYA_UPDATE_TEST_AUTO) {
+      // Installer flow without electron-updater/Windows: a scripted backend (1st download fails its checksum, 2nd succeeds).
+      distribution = { kind: 'installer', mode: 'auto' };
+      startupDelayMs = 300;
+      let attempts = 0;
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      scriptedBackend = {
+        check: async () => ({ available: true, version: '99.0.0', releaseNotes: '<p>Scripted release</p>', releaseDate: null }),
+        download: async (onProgress) => {
+          attempts += 1;
+          for (const percent of [20, 60]) {
+            onProgress({ percent, transferred: percent * 10, total: 1000, bytesPerSecond: 100 });
+            await sleep(400);
+          }
+          if (attempts === 1) throw new UpdateError('checksum', 'sha512 checksum mismatch (scripted)');
+          onProgress({ percent: 100, transferred: 1000, total: 1000, bytesPerSecond: 100 });
+        },
+        install: () => console.log('INSTALL_CALLED'),
+      };
+    } else {
+      distribution = { kind: 'dev', mode: 'disabled', reason: 'test' };
+    }
+  }
+  const log = (level, msg) => console[level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log'](`[update] ${msg}`);
+  let backend = null;
+  if (scriptedBackend) {
+    backend = scriptedBackend;
+  } else if (distribution.mode === 'auto') {
+    backend = async () => {
+      const { autoUpdater } = await import('electron-updater'); // loaded only by the installed build
+      return createElectronUpdaterBackend(autoUpdater, {
+        log,
+        repo,
+        currentVersion: app.getVersion(),
+        fetch: (url, init) => net.fetch(url, init),
+        apiBase,
+      });
+    };
+  } else if (distribution.mode === 'manual') {
+    backend = createGithubReleaseBackend({
+      repo,
+      fetch: (url, init) => net.fetch(url, init), // Chromium network stack: system proxy + certificate store
+      currentVersion: app.getVersion(),
+      kind: distribution.kind,
+      apiBase,
+      userAgent: `Honya-Desktop/${app.getVersion()}`,
+    });
+  }
+  return createAppUpdater({
+    currentVersion: app.getVersion(),
+    repo,
+    distribution,
+    backend,
+    getPrefs: () => prefs.get(),
+    openExternal,
+    startupDelayMs,
+    log,
+    onAvailable: async ({ version }) => {
+      const p = await prefs.get().catch(() => ({}));
+      if (p?.notificationsEnabled === false) return;
+      await showNotification({ title: `Honya ${version} is available`, body: 'Open Settings to see what is new and update.' });
+    },
+  });
+}
+const appUpdater = createRuntimeAppUpdater();
 
 // Test hook (smoke mode ONLY): HONYA_TEST_HOST_MAP="https://www.royalroad.com=http://127.0.0.1:PORT" redirects plugin
 // network calls to a local fixture server. Never active in normal runs.
@@ -239,6 +332,13 @@ const handlers = {
     const p = await prefs.get();
     return libraryUpdate.maybeRunAutoUpdate(p?.autoUpdateInterval);
   },
+  // App updater (distinct from 'updates:*', which is the library chapter refresh). No renderer-supplied arguments are used.
+  'appUpdate:getState': () => appUpdater.getState(),
+  'appUpdate:check': () => appUpdater.checkForUpdates({ manual: true }),
+  'appUpdate:download': () => appUpdater.downloadUpdate(),
+  'appUpdate:install': () => appUpdater.installNow(),
+  'appUpdate:openReleases': () => appUpdater.openReleases(),
+  'appUpdate:openDownload': () => appUpdater.openDownload(),
   'search:global': globalSearch,
   'prefs:invalidate': async () => {
     prefs.invalidate();
@@ -379,13 +479,18 @@ app.whenReady().then(async () => {
     libraryUpdate.maybeRunAutoUpdate(p.autoUpdateInterval).catch(() => {});
   }
   discord.refresh();
+  appUpdater.subscribe((state) => {
+    for (const win of BrowserWindow.getAllWindows()) win.webContents.send('honya:appUpdateState', state);
+  });
   createWindow();
+  appUpdater.start(); // first background check after a delay; never blocks startup or the UI
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
 app.on('before-quit', () => {
+  appUpdater.stop();
   session.end();
   discord.shutdown();
 });
