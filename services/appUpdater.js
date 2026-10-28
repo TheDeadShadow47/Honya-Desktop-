@@ -241,8 +241,16 @@ export function createGithubReleaseBackend({ repo, fetch, currentVersion, kind, 
  * Adapter around electron-updater's autoUpdater (NSIS installer). Nothing is downloaded or installed unless the user asks
  * (autoDownload / autoInstallOnAppQuit stay off), prereleases and downgrades are refused, and the download is verified
  * by electron-updater against the sha512 in latest.yml.
+ *
+ * When a GitHub release lookup is supplied, the published version is compared BEFORE electron-updater is asked for
+ * latest.yml. electron-updater cannot know a release's version without that file, so a newest release that is older
+ * than this build (or one published without metadata) would otherwise be misreported as "missing update files".
+ * A genuinely newer release still goes through electron-updater unchanged, including its missing-assets errors.
  */
-export function createElectronUpdaterBackend(autoUpdater, { log = () => {} } = {}) {
+export function createElectronUpdaterBackend(
+  autoUpdater,
+  { log = () => {}, repo = null, currentVersion = null, fetch = null, apiBase = 'https://api.github.com' } = {},
+) {
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.autoRunAppAfterInstall = true;
@@ -252,8 +260,29 @@ export function createElectronUpdaterBackend(autoUpdater, { log = () => {} } = {
   autoUpdater.logger = { info: (m) => log('info', m), warn: (m) => log('warn', m), error: (m) => log('error', m), debug: () => {} };
   // An 'error' event with no listener would be thrown as an uncaught exception; failures are reported via the promises.
   autoUpdater.on('error', (e) => log('error', e?.message ?? String(e)));
+  // Reuse the manual path's version comparison, release lookup and error classification. It is only created when the
+  // caller can provide the repo and a fetch implementation; without them the adapter behaves exactly as before.
+  const releaseLookup =
+    repo && currentVersion && typeof fetch === 'function'
+      ? createGithubReleaseBackend({
+          repo,
+          fetch,
+          currentVersion,
+          kind: 'installer',
+          apiBase,
+          userAgent: `Honya-Desktop/${currentVersion}`,
+        })
+      : null;
   return {
     async check() {
+      if (releaseLookup) {
+        const latest = await releaseLookup.check();
+        // Equal or older: nothing to install, and latest.yml is irrelevant (this also covers a local build ahead of
+        // the newest published release). Do not call electron-updater in this case.
+        if (!latest.available) {
+          return { available: false, version: latest.version ?? null, releaseNotes: '', releaseDate: null, asset: null };
+        }
+      }
       const r = await autoUpdater.checkForUpdates();
       if (!r) throw new UpdateError('config', 'Updates are not configured for this build');
       const info = r.updateInfo ?? {};

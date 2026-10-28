@@ -34,7 +34,13 @@ const server = net.createServer((s) => {
     }
   });
 });
-await new Promise((r) => server.listen(path.join(runtimeDir, 'discord-ipc-0'), r));
+// Windows cannot listen on a filesystem path, and the default pipe names may belong to a real Discord client. Use a
+// private path and pass it to the app through the HONYA_SMOKE-only HONYA_DISCORD_IPC hook.
+const listenPath =
+  process.platform === 'win32'
+    ? `\\\\.\\pipe\\honya-reader-test-${process.pid}-${Date.now()}`
+    : path.join(runtimeDir, 'discord-ipc-0');
+await new Promise((r) => server.listen(listenPath, r));
 
 const body = fs.readFileSync(path.join(root, 'scripts', 'e2e-reader.js'), 'utf8');
 const run = (phase) => new Promise((resolve) => {
@@ -42,7 +48,7 @@ const run = (phase) => new Promise((resolve) => {
   fs.writeFileSync(script, `const PHASE = ${JSON.stringify(phase)};\n${body}`);
   const env = {
     ...process.env, HONYA_SMOKE: '1', HONYA_DATA_DIR: dataDir, HONYA_SMOKE_SCRIPT: script, HONYA_SMOKE_OUT: path.join(dataDir, 'shots-' + phase),
-    XDG_RUNTIME_DIR: runtimeDir, HONYA_DISCORD_CLIENT_ID: '123456789012345678',
+    XDG_RUNTIME_DIR: runtimeDir, HONYA_DISCORD_CLIENT_ID: '123456789012345678', HONYA_DISCORD_IPC: listenPath,
   };
   const args = [root, ...(process.platform === 'linux' ? ['--no-sandbox', '--disable-gpu'] : [])];
   const [cmd, argv] = linuxHeadless ? ['xvfb-run', ['-a', electron, ...args]] : [electron, args];

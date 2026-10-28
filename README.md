@@ -131,6 +131,7 @@ Maintainers: see [docs/UPDATES.md](docs/UPDATES.md) for the release procedure (t
 | Core (database, plugins, backup/restore, persistence) | `npm run test:smoke` |
 | Plugin compatibility | `npm run test:compat` · `npm run test:plugins` |
 | Reader | `npm run test:reader-logic` · `npm run test:reader` |
+| Source browsing pagination | `npm run test:catalog-paging` |
 | UI | `npm run test:ui` |
 | App updater | `npm run test:app-update` · `npm run test:app-update-ui` |
 | Internationalization audit | `npm run test:i18n` |

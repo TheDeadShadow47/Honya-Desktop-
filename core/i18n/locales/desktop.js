@@ -163,6 +163,7 @@ const en = {
   'browse.searchThisSource': 'Search this source',
   'browse.noResults': 'No results',
   'browse.noResultsHint': 'Try a different search term, or switch to the Popular tab.',
+  'browse.loadMore': 'Load more',
 
   'settings.title': 'Settings',
   'settings.subtitle': 'Appearance, reading, downloads and data',
@@ -447,6 +448,7 @@ const ar = {
   'browse.searchThisSource': 'البحث في هذا المصدر',
   'browse.noResults': 'لا توجد نتائج',
   'browse.noResultsHint': 'جرّب كلمة بحث مختلفة، أو انتقل إلى تبويب الأشهر.',
+  'browse.loadMore': 'تحميل المزيد',
 
   'settings.title': 'الإعدادات',
   'settings.subtitle': 'المظهر والقراءة والتنزيلات والبيانات',
@@ -731,6 +733,7 @@ const fr = {
   'browse.searchThisSource': 'Rechercher dans cette source',
   'browse.noResults': 'Aucun résultat',
   'browse.noResultsHint': 'Essayez un autre terme ou passez à l’onglet Populaires.',
+  'browse.loadMore': 'Charger plus',
 
   'settings.title': 'Réglages',
   'settings.subtitle': 'Apparence, lecture, téléchargements et données',
@@ -1016,6 +1019,7 @@ const de = {
   'browse.searchThisSource': 'Diese Quelle durchsuchen',
   'browse.noResults': 'Keine Ergebnisse',
   'browse.noResultsHint': 'Versuche einen anderen Suchbegriff oder wechsle zum Tab „Beliebt“.',
+  'browse.loadMore': 'Mehr laden',
 
   'settings.title': 'Einstellungen',
   'settings.subtitle': 'Darstellung, Lesen, Downloads und Daten',
@@ -1301,6 +1305,7 @@ const it = {
   'browse.searchThisSource': 'Cerca in questa sorgente',
   'browse.noResults': 'Nessun risultato',
   'browse.noResultsHint': 'Prova un altro termine oppure passa alla scheda Popolari.',
+  'browse.loadMore': 'Carica altri',
 
   'settings.title': 'Impostazioni',
   'settings.subtitle': 'Aspetto, lettura, download e dati',

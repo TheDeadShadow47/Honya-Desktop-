@@ -43,6 +43,17 @@ const ok = (c, m) => {
 const same = (a, b, m) => ok(JSON.stringify(a) === JSON.stringify(b), `${m} (got ${JSON.stringify(a)})`);
 const flush = () => new Promise((r) => setImmediate(r));
 
+/** Fake GitHub releases API: one JSON response (or a raw body/status) and the URLs it was asked for. */
+const releaseApi = (release, { status = 200, headers = {} } = {}) => {
+  const calls = [];
+  const fetch = async (url) => {
+    calls.push(String(url));
+    const body = typeof release === 'string' ? release : JSON.stringify(release);
+    return new Response(body, { status, headers: { 'content-type': 'application/json', ...headers } });
+  };
+  return { calls, fetch };
+};
+
 const REPO = { owner: 'o', repo: 'r' };
 const INSTALLER = { kind: 'installer', mode: 'auto' };
 const PORTABLE = { kind: 'portable', mode: 'manual' };
@@ -614,14 +625,14 @@ const rejectsWith = async (fn) => { try { await fn(); } catch (e) { return e; } 
     return { 'latest.yml': latestYml(v), [a.installer]: 'exe', [a.blockmap]: 'blockmap', [a.portable]: 'exe' };
   };
   // The app's own installer backend + state machine, fed by the real provider (only the isUpdateAvailable decision is local).
-  const appOver = (provider) => {
+  const appOver = (provider, backendOptions = {}) => {
     const autoUpdater = Object.assign(new EventEmitter(), {
       async checkForUpdates() {
         const info = await provider.getLatestVersion();
         return { updateInfo: info, isUpdateAvailable: compareVersions(info.version, pkg.version) === 1 };
       },
     });
-    return createAppUpdater({ currentVersion: pkg.version, repo, distribution: { kind: 'installer', mode: 'auto' }, backend: createElectronUpdaterBackend(autoUpdater) });
+    return createAppUpdater({ currentVersion: pkg.version, repo, distribution: { kind: 'installer', mode: 'auto' }, backend: createElectronUpdaterBackend(autoUpdater, backendOptions) });
   };
   const failure = async (p) => {
     try {
@@ -635,28 +646,38 @@ const rejectsWith = async (fn) => { try { await fn(); } catch (e) { return e; } 
   // 1. The real published state: the only release is v0.1.0 (Setup + Portable .exe, no latest.yml), installed copy is newer.
   {
     const tag = 'v0.1.0';
-    const gh = fakeGithub({ tag, assets: { 'Honya-Desktop-Setup-0.1.0.exe': 'exe', 'Honya-Desktop-Portable-0.1.0.exe': 'exe' } });
+    const assets = { 'Honya-Desktop-Setup-0.1.0.exe': 'exe', 'Honya-Desktop-Portable-0.1.0.exe': 'exe' };
+    const gh = fakeGithub({ tag, assets });
     const err = await failure(() => makeProvider(gh.executor).getLatestVersion());
-    ok(err?.code === 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND' && err.message.includes(`${base}/download/${tag}/latest.yml`), 'missing assets (real v0.1.0): electron-updater fails on releases/download/v0.1.0/latest.yml with ERR_UPDATER_CHANNEL_FILE_NOT_FOUND');
-    same(gh.requests.map((u) => new URL(u).pathname), [`${base}.atom`, `${base}/latest`, `${base}/download/${tag}/latest.yml`], 'missing assets: the updater only ever asks for the release feed, the latest tag and latest.yml (source archives never count)');
-    const s = await appOver(makeProvider(fakeGithub({ tag, assets: { 'Honya-Desktop-Setup-0.1.0.exe': 'exe' } }).executor)).checkForUpdates({ manual: true });
-    ok(s.status === 'error' && s.error.code === 'missing-assets' && s.error.phase === 'check' && s.releasesUrl === `https://github.com${base}`, 'missing assets (real v0.1.0): Settings shows the "missing update files" error and links to the releases page');
-    ok(desktop.en[ERROR_KEYS[s.error.code]] === 'The release is missing its update files, so it cannot be installed automatically.', 'missing assets: this error code is the exact message shown in Settings -> Updates');
+    ok(err?.code === 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND' && err.message.includes(`${base}/download/${tag}/latest.yml`), 'root cause (raw electron-updater, no preflight): v0.1.0 fails on releases/download/v0.1.0/latest.yml with ERR_UPDATER_CHANNEL_FILE_NOT_FOUND');
+    same(gh.requests.map((u) => new URL(u).pathname), [`${base}.atom`, `${base}/latest`, `${base}/download/${tag}/latest.yml`], 'root cause: without a preflight the updater asks for the release feed, the latest tag and latest.yml (source archives never count)');
+    // With the version preflight the app never reaches that request: the newest published tag is older than this build.
+    const api = releaseApi({ tag_name: tag, draft: false, prerelease: false, body: 'old', published_at: '2026-10-01T00:00:00Z', assets: [] });
+    const gated = fakeGithub({ tag, assets });
+    const s = await appOver(makeProvider(gated.executor), { repo, currentVersion: pkg.version, fetch: api.fetch }).checkForUpdates({ manual: true });
+    ok(s.status === 'up-to-date' && s.error === null && s.releasesUrl === `https://github.com${base}`, 'version preflight (real v0.1.0): installed 0.2.0 reports "up to date" instead of a missing-assets error');
+    ok(gated.requests.length === 0, 'version preflight (real v0.1.0): electron-updater is never asked for latest.yml');
+    same(api.calls.map((u) => new URL(u).pathname), [`/repos/${repo.owner}/${repo.repo}/releases/latest`], 'version preflight: one public releases/latest request, no credentials');
   }
 
   // 2. A release that has only notes (no assets at all) for the current version.
   {
     const gh = fakeGithub({ tag: `v${pkg.version}`, assets: {} });
     const err = await failure(() => makeProvider(gh.executor).getLatestVersion());
-    ok(err?.code === 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND' && err.message.includes(`/download/v${pkg.version}/latest.yml`), `missing assets: v${pkg.version} published with release notes only -> latest.yml not found`);
+    ok(err?.code === 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND' && err.message.includes(`/download/v${pkg.version}/latest.yml`), `root cause (raw electron-updater): v${pkg.version} published with release notes only -> latest.yml not found`);
   }
 
-  // 3. Installer + blockmap + portable uploaded, but latest.yml forgotten: still not installable.
+  // 3. A newer release (v0.2.1) uploads installer + blockmap + portable but forgets latest.yml: the preflight lets it
+  // through, and electron-updater still reports the existing missing-assets error.
   {
-    const assets = fullRelease(pkg.version);
+    const next = '0.2.1';
+    const assets = fullRelease(next);
     delete assets['latest.yml'];
-    const s = await appOver(makeProvider(fakeGithub({ tag: `v${pkg.version}`, assets }).executor)).checkForUpdates({ manual: true });
-    ok(s.status === 'error' && s.error.code === 'missing-assets', 'missing assets: installer without latest.yml is not enough (still "missing update files")');
+    const gh = fakeGithub({ tag: `v${next}`, assets });
+    const api = releaseApi({ tag_name: `v${next}`, draft: false, prerelease: false, body: '', published_at: '2026-10-01T00:00:00Z', assets: [] });
+    const s = await appOver(makeProvider(gh.executor), { repo, currentVersion: pkg.version, fetch: api.fetch }).checkForUpdates({ manual: true });
+    ok(s.status === 'error' && s.error.code === 'missing-assets' && s.error.phase === 'check', 'missing assets: a newer release with installer but no latest.yml is still "missing update files"');
+    ok(desktop.en[ERROR_KEYS[s.error.code]] === 'The release is missing its update files, so it cannot be installed automatically.', 'missing assets: this error code is the exact message shown in Settings -> Updates');
   }
 
   // 4. A complete release for the installed version: no error, "up to date", and every URL the updater derives exists.
@@ -679,6 +700,84 @@ const rejectsWith = async (fn) => { try { await fn(); } catch (e) { return e; } 
     const next = '0.2.1';
     const s = await appOver(makeProvider(fakeGithub({ tag: `v${next}`, assets: fullRelease(next), notes: 'Fixes' }).executor)).checkForUpdates({ manual: true });
     ok(s.status === 'available' && s.version === next && s.canDownload && s.error === null, 'complete newer release (v0.2.1): update is offered and can be downloaded');
+  }
+}
+
+// ================================================================== 9. version preflight (published release equal/older than the installed build)
+// The installed build asks the public GitHub release API for the published tag BEFORE electron-updater reads latest.yml.
+// A newest release that is equal to or older than this build is "up to date", and a newer release still goes through
+// electron-updater unchanged. The tests use a fake fetch and a fake electron-updater: no live GitHub, no download.
+{
+  const repo = parseRepository(pkg);
+  const endpoint = `https://api.github.com/repos/${repo.owner}/${repo.repo}/releases/latest`;
+  const latestRelease = (tag) => ({ tag_name: tag, draft: false, prerelease: false, body: 'Notes', published_at: '2026-10-01T00:00:00Z', assets: [] });
+  // Fake electron-updater: records the calls, returns a result or throws the given error.
+  const fakeAutoUpdater = (result) => {
+    const calls = [];
+    return {
+      calls,
+      on() {},
+      async checkForUpdates() {
+        calls.push('check');
+        if (result instanceof Error) throw result;
+        return result;
+      },
+    };
+  };
+  const gated = (fetch, autoUpdater) =>
+    createAppUpdater({
+      currentVersion: pkg.version,
+      repo,
+      distribution: INSTALLER,
+      backend: createElectronUpdaterBackend(autoUpdater, { repo, currentVersion: pkg.version, fetch }),
+    });
+  const check = async (api, autoUpdater) => gated(api.fetch, autoUpdater).checkForUpdates({ manual: true });
+
+  // nothing to install: equal or older published release
+  for (const [name, tag] of [
+    ['older', 'v0.1.0'],
+    ['equal', `v${pkg.version}`],
+  ]) {
+    const api = releaseApi(latestRelease(tag));
+    const au = fakeAutoUpdater({ isUpdateAvailable: true, updateInfo: { version: '0.2.1' } });
+    const s = await check(api, au);
+    ok(
+      s.status === 'up-to-date' && s.error === null && au.calls.length === 0 && api.calls.length === 1 && api.calls[0] === endpoint,
+      `preflight: published ${name} release (${tag}) -> up to date, one API request, electron-updater/latest.yml never consulted`,
+    );
+  }
+
+  // a newer complete release continues through electron-updater unchanged
+  {
+    const api = releaseApi(latestRelease('v0.2.1'));
+    const au = fakeAutoUpdater({ isUpdateAvailable: true, updateInfo: { version: '0.2.1', releaseNotes: 'Fixes', releaseDate: 'd' } });
+    const s = await check(api, au);
+    ok(s.status === 'available' && s.version === '0.2.1' && s.error === null && au.calls.length === 1 && api.calls.length === 1, 'preflight: newer complete release (v0.2.1) still goes through electron-updater and is offered');
+  }
+
+  // a newer release that is genuinely missing its metadata keeps the existing error
+  {
+    const api = releaseApi(latestRelease('v0.2.1'));
+    const au = fakeAutoUpdater(Object.assign(new Error('Cannot find latest.yml in the latest release artifacts'), { code: 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND' }));
+    const s = await check(api, au);
+    ok(s.status === 'error' && s.error.code === 'missing-assets' && s.error.phase === 'check' && au.calls.length === 1, 'preflight: newer release without latest.yml keeps the existing "missing update files" error');
+  }
+
+  // preflight failures are classified with the existing error codes, before electron-updater is reached
+  const preflightFailures = [
+    ['no published release (404)', releaseApi('', { status: 404 }), 'no-release'],
+    ['rate limit (429)', releaseApi('', { status: 429 }), 'rate-limited'],
+    ['rate limit (403, quota exhausted)', releaseApi('', { status: 403, headers: { 'x-ratelimit-remaining': '0' } }), 'rate-limited'],
+    ['server error (500)', releaseApi('', { status: 500 }), 'server'],
+    ['unreadable response', releaseApi('not json'), 'bad-response'],
+    ['release without a tag', releaseApi({ assets: [] }), 'bad-response'],
+    ['non-version tag', releaseApi(latestRelease('nightly')), 'bad-response'],
+    ['network failure', { calls: [], fetch: async () => { throw new TypeError('fetch failed'); } }, 'offline'],
+  ];
+  for (const [name, api, code] of preflightFailures) {
+    const au = fakeAutoUpdater({ isUpdateAvailable: true, updateInfo: { version: '0.2.1' } });
+    const s = await check(api, au);
+    ok(s.status === 'error' && s.error.code === code && s.error.phase === 'check' && au.calls.length === 0, `preflight: ${name} -> ${code}, electron-updater not reached`);
   }
 }
 

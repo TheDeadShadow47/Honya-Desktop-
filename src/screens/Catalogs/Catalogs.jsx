@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import Icon from '../../components/Icon.jsx';
 import {
   Button,
@@ -8,6 +8,7 @@ import {
   Header,
   Segmented,
   Select,
+  Spinner,
   useToast,
 } from '../../components/ui.jsx';
 import { plugins } from '../../lib/api';
@@ -17,6 +18,7 @@ import { usePresence } from '../../lib/presence';
 import { useAsync } from '../../lib/useAsync';
 import { subscribe, useResource } from '../../lib/store.js';
 import { installPlugin, openNovelResult, uninstallPlugin } from '../../lib/actions';
+import { browseReducer, catalogItemKey, catalogPageRequest, initialBrowseState } from './paging.js';
 
 const IsolationWarning = ({ isolation, t }) =>
   isolation === 'none' ? (
@@ -233,20 +235,101 @@ export function Catalogs() {
   );
 }
 
+// Page-number browsing on top of the existing plugins.popular/search(id, ..., page) API. There is no page-token or
+// hasNextPage in the plugin contract: a page is requested until it is empty or repeats items already shown.
+function useBrowsePages(pluginId, mode) {
+  const [state, dispatch] = useReducer(browseReducer, undefined, initialBrowseState);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const generationRef = useRef(0);
+  const busyRef = useRef(false);
+
+  const request = useCallback(
+    (page) => {
+      const { method, args } = catalogPageRequest(mode.kind, pluginId, mode.q, page);
+      return plugins[method](...args);
+    },
+    [pluginId, mode.kind, mode.q],
+  );
+
+  const run = useCallback(
+    (page, generation, retry = false) => {
+      busyRef.current = true;
+      dispatch({ type: 'load', page, generation, retry });
+      Promise.resolve()
+        .then(() => request(page))
+        .then((items) => {
+          if (generation !== generationRef.current) return; // source/query changed while loading
+          dispatch({ type: 'loaded', page, generation, items });
+        })
+        .catch((error) => {
+          if (generation !== generationRef.current) return;
+          dispatch({ type: 'failed', page, generation, error });
+        })
+        .finally(() => {
+          if (generation === generationRef.current) busyRef.current = false;
+        });
+    },
+    [request],
+  );
+
+  // Page 1, and a clean reset whenever the source, browse mode or search query changes.
+  useEffect(() => {
+    const generation = generationRef.current + 1;
+    generationRef.current = generation;
+    dispatch({ type: 'reset', generation });
+    run(1, generation);
+    return () => {
+      // A response from the previous list must never append to the new one.
+      if (generation === generationRef.current) generationRef.current += 1;
+      busyRef.current = false;
+    };
+  }, [run]);
+
+  const loadMore = useCallback(() => {
+    if (busyRef.current) return; // a scroll event must not duplicate an in-flight request
+    const s = stateRef.current;
+    if (s.loading || s.done || s.error || s.pendingPage != null) return;
+    run(s.nextPage, generationRef.current);
+  }, [run]);
+
+  // Retry only the failed page; already-loaded results stay on screen.
+  const retry = useCallback(() => {
+    if (busyRef.current) return;
+    const s = stateRef.current;
+    if (!s.error || s.failedPage == null) return;
+    run(s.failedPage, generationRef.current, true);
+  }, [run]);
+
+  return { state, loadMore, retry };
+}
+
 export function Browse({ param: pluginId }) {
   const t = useI18n();
   const toast = useToast();
   const [q, setQ] = useState('');
   const [mode, setMode] = useState({ kind: 'popular', q: '' });
   usePresence(mode.kind === 'search' || q.trim() ? 'search' : 'browse');
-  const res = useResource([], () => (mode.kind === 'search' ? plugins.search(pluginId, mode.q, 1) : plugins.popular(pluginId, 1)), [
-    pluginId,
-    mode.kind,
-    mode.q,
-  ]);
+  const { state, loadMore, retry } = useBrowsePages(pluginId, mode);
   const meta = useAsync(async () => (await plugins.listInstalled()).find((p) => p.id === pluginId), [pluginId]);
+  const sentinelRef = useRef(null);
 
   useEffect(() => subscribe('plugins'), []);
+
+  // Infinite scrolling: the sentinel sits after the grid and is re-observed for every new page. The visible button is
+  // the accessible fallback (and the only trigger if IntersectionObserver is unavailable).
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || state.done || state.error || typeof IntersectionObserver === 'undefined') return undefined;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) loadMore();
+      },
+      { rootMargin: '600px 0px' },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [state.nextPage, state.done, state.error, state.loading, loadMore]);
 
   const open = async (n) => {
     try {
@@ -286,24 +369,37 @@ export function Browse({ param: pluginId }) {
         </Button>
       </Header>
 
-      {res.error ? (
-        <ErrorBox error={res.error} onRetry={res.reload} />
-      ) : res.loading ? (
+      {state.error && !state.items.length ? (
+        <ErrorBox error={state.error} onRetry={retry} />
+      ) : state.loading && !state.items.length ? (
         <p className="muted">{t('common.loading')}</p>
-      ) : !res.data?.length ? (
+      ) : !state.items.length ? (
         <Empty icon="search" title={t('browse.noResults')} hint={t('browse.noResultsHint')} />
       ) : (
-        <div className="grid">
-          {res.data.map((n, i) => (
-            <button key={`${n.path ?? n.name}-${i}`} className="card" onClick={() => open(n)} title={n.name}>
-              <div className="cover-wrap">
-                <Cover src={n.cover} title={n.name} />
-              </div>
-              <div className="card-title">{n.name}</div>
-              {n.author && <div className="card-sub">{n.author}</div>}
-            </button>
-          ))}
-        </div>
+        <>
+          <div className="grid">
+            {state.items.map((n) => (
+              <button key={catalogItemKey(n)} className="card" onClick={() => open(n)} title={n.name}>
+                <div className="cover-wrap">
+                  <Cover src={n.cover} title={n.name} />
+                </div>
+                <div className="card-title">{n.name}</div>
+                {n.author && <div className="card-sub">{n.author}</div>}
+              </button>
+            ))}
+          </div>
+          {state.error ? (
+            <ErrorBox error={state.error} onRetry={retry} />
+          ) : state.done ? null : (
+            <div className="row" style={{ justifyContent: 'center', alignItems: 'center', gap: 8, paddingTop: 18 }}>
+              {state.loading && <Spinner />}
+              <Button icon="refresh" disabled={state.loading} onClick={loadMore}>
+                {t('browse.loadMore')}
+              </Button>
+              <span ref={sentinelRef} aria-hidden="true" style={{ width: 1, height: 1 }} />
+            </div>
+          )}
+        </>
       )}
       {toast.node}
     </>

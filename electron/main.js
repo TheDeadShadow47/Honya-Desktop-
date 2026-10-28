@@ -139,7 +139,13 @@ function createRuntimeAppUpdater() {
   } else if (distribution.mode === 'auto') {
     backend = async () => {
       const { autoUpdater } = await import('electron-updater'); // loaded only by the installed build
-      return createElectronUpdaterBackend(autoUpdater, { log });
+      return createElectronUpdaterBackend(autoUpdater, {
+        log,
+        repo,
+        currentVersion: app.getVersion(),
+        fetch: (url, init) => net.fetch(url, init),
+        apiBase,
+      });
     };
   } else if (distribution.mode === 'manual') {
     backend = createGithubReleaseBackend({

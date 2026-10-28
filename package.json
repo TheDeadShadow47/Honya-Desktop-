@@ -15,7 +15,7 @@
     "test:compat": "node scripts/plugin-compat.mjs",
     "test:ui": "npm run build && node scripts/e2e-ui.mjs",
     "test:i18n": "node scripts/i18n-audit.mjs",
-    "test": "npm run test:i18n && npm run test:discord && npm run test:smoke && npm run test:app-update && npm run test:reader-logic && npm run test:plugins && npm run test:compat && npm run test:ui && npm run test:app-update-ui && npm run test:reader",
+    "test": "npm run test:i18n && npm run test:discord && npm run test:smoke && npm run test:app-update && npm run test:reader-logic && npm run test:catalog-paging && npm run test:plugins && npm run test:compat && npm run test:ui && npm run test:app-update-ui && npm run test:reader",
     "dist": "npm run build && electron-builder --win --publish never",
     "dist:installer": "npm run build && electron-builder --win nsis --publish never",
     "dist:portable": "npm run build && electron-builder --win portable --publish never",
@@ -23,6 +23,7 @@
     "test:discord": "node scripts/discord-test.mjs",
     "test:reader": "npm run build && node scripts/e2e-reader.mjs",
     "test:reader-logic": "node scripts/reader-logic-test.mjs",
+    "test:catalog-paging": "node scripts/catalog-paging-test.mjs",
     "test:app-update": "node scripts/app-updater-test.mjs",
     "test:app-update-ui": "npm run build && node scripts/e2e-appupdate.mjs"
   },

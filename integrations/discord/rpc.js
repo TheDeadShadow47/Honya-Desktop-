@@ -8,6 +8,8 @@ const OP = { HANDSHAKE: 0, FRAME: 1, CLOSE: 2, PING: 3, PONG: 4 };
 
 export function ipcPaths(platform = process.platform, env = process.env) {
   const paths = [];
+  // Test hook (HONYA_SMOKE runs): point the client at a private fake server instead of a real Discord client's pipe.
+  if (env.HONYA_SMOKE === '1' && env.HONYA_DISCORD_IPC) paths.push(env.HONYA_DISCORD_IPC);
   for (let i = 0; i < 10; i++) {
     if (platform === 'win32') {
       paths.push(`\\\\?\\pipe\\discord-ipc-${i}`);
