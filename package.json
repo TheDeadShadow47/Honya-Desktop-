@@ -1,7 +1,7 @@
 {
   "name": "honya-desktop",
   "productName": "Honya Desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Honya Desktop - standalone Electron desktop reader compatible with LNReader plugins",
   "author": "Honya",
@@ -15,14 +15,16 @@
     "test:compat": "node scripts/plugin-compat.mjs",
     "test:ui": "npm run build && node scripts/e2e-ui.mjs",
     "test:i18n": "node scripts/i18n-audit.mjs",
-    "test": "npm run test:i18n && npm run test:discord && npm run test:smoke && npm run test:reader-logic && npm run test:plugins && npm run test:compat && npm run test:ui && npm run test:reader",
-    "dist": "npm run build && electron-builder --win",
-    "dist:installer": "npm run build && electron-builder --win nsis",
-    "dist:portable": "npm run build && electron-builder --win portable",
+    "test": "npm run test:i18n && npm run test:discord && npm run test:smoke && npm run test:app-update && npm run test:reader-logic && npm run test:plugins && npm run test:compat && npm run test:ui && npm run test:app-update-ui && npm run test:reader",
+    "dist": "npm run build && electron-builder --win --publish never",
+    "dist:installer": "npm run build && electron-builder --win nsis --publish never",
+    "dist:portable": "npm run build && electron-builder --win portable --publish never",
     "pack": "npm run build && electron-builder --dir",
     "test:discord": "node scripts/discord-test.mjs",
     "test:reader": "npm run build && node scripts/e2e-reader.mjs",
-    "test:reader-logic": "node scripts/reader-logic-test.mjs"
+    "test:reader-logic": "node scripts/reader-logic-test.mjs",
+    "test:app-update": "node scripts/app-updater-test.mjs",
+    "test:app-update-ui": "npm run build && node scripts/e2e-appupdate.mjs"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.0.0",
@@ -30,6 +32,7 @@
     "dayjs": "^1.11.21",
     "electron": "^38.0.0",
     "electron-builder": "^26.0.0",
+    "electron-updater": "^6.8.9",
     "entities": "^8.1.0",
     "esbuild": "^0.25.0",
     "htmlparser2": "^12.0.0",
@@ -38,6 +41,10 @@
     "vite": "^7.0.0"
   },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TheDeadShadow47/Honya-Desktop-.git"
+  },
   "engines": {
     "node": ">=20.19"
   }

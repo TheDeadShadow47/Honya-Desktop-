@@ -38,3 +38,13 @@ nsis:
 
 portable:
   artifactName: Honya-Desktop-Portable-${version}.${ext}
+
+# Auto-update source. electron-builder writes this into the installed app (resources/app-update.yml) and generates
+# latest.yml next to the installer; upload latest.yml, the installer and its .blockmap to the GitHub release (see
+# docs/UPDATES.md). Only the NSIS installer self-updates: the portable build is not listed in latest.yml.
+# `owner`/`repo` must match package.json "repository" (checked by npm run test:app-update).
+publish:
+  provider: github
+  owner: TheDeadShadow47
+  repo: Honya-Desktop-
+  releaseType: release          # stable releases only; prereleases are never offered

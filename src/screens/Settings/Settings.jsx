@@ -8,6 +8,7 @@ import { usePresence } from '../../lib/presence';
 import { useAsync } from '../../lib/useAsync';
 import { Button, Checkbox, Dialog, Header, Segmented, Select, useToast } from '../../components/ui.jsx';
 import { go } from '../../lib/router';
+import AppUpdatePanel from '../../components/AppUpdatePanel.jsx';
 
 const Section = ({ title, hint, children }) => (
   <section className="section">
@@ -312,6 +313,16 @@ export default function Settings() {
         />
         <Checkbox label={t('settings.notifyUpdateComplete')} checked={settings.notifyUpdateComplete} onChange={(v) => update({ notifyUpdateComplete: v })} />
         <Checkbox label={t('settings.notifyUpdateFailed')} checked={settings.notifyUpdateFailed} onChange={(v) => update({ notifyUpdateFailed: v })} />
+      </Section>
+
+      <Section title={t('update.title')} hint={t('appUpdate.hint')}>
+        <AppUpdatePanel />
+        <Checkbox
+          label={t('appUpdate.autoCheck')}
+          hint={t('appUpdate.autoCheckHint')}
+          checked={settings.autoCheckAppUpdates}
+          onChange={(v) => update({ autoCheckAppUpdates: v })}
+        />
       </Section>
 
       <Section title={t('catalogs.repositories')} hint={t('settings.sourcesHint')}>

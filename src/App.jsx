@@ -11,6 +11,7 @@ import Reader from './screens/Reader/Reader.jsx';
 import Settings from './screens/Settings/Settings.jsx';
 import { ErrorBox } from './components/ui.jsx';
 import { useSettings } from './lib/settings.jsx';
+import AppUpdateBanner from './components/AppUpdateBanner.jsx';
 
 class Boundary extends Component {
   state = { error: null };
@@ -55,6 +56,7 @@ export default function App() {
           <Screen key={`${route.name}/${route.param}`} param={route.param} />
         </Boundary>
       </main>
+      <AppUpdateBanner hidden={full} />
     </div>
   );
 }

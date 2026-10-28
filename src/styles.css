@@ -350,3 +350,15 @@ h3 { font-weight: 700; letter-spacing: -.1px; }
 @media (max-width: 1500px) {
   .reader-bar .btn-label, .reader-title .chip { display: none; }
 }
+
+/* App updater (Settings > App Update, update notice) */
+.upd-panel { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; margin: 10px 0; background: var(--surface1); border: 1px solid var(--outline); border-radius: var(--radius); }
+.upd-panel p { margin: 0; }
+.upd-status { font-weight: 600; } .upd-status.error { color: var(--error); } .upd-status.ok { color: var(--primary); } .upd-status.muted { color: var(--textMuted); font-weight: 500; }
+.upd-bar { height: 6px; background: var(--surface3); border-radius: 6px; overflow: hidden; }
+.upd-bar i { display: block; height: 100%; background: var(--primary); border-radius: 6px; transition: width .2s var(--ease); }
+.upd-notes-title { margin: 4px 0 0; font-size: 13px; }
+.upd-notes { margin: 0; padding: 10px 12px; max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 13px; line-height: 1.5; background: var(--surface2); border-radius: 8px; }
+.upd-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.upd-banner { position: fixed; inset-block-end: 20px; inset-inline-end: 20px; z-index: 50; width: 320px; display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; background: var(--surface3); border: 1px solid var(--outline); border-inline-start: 4px solid var(--primary); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.45); animation: honya-pop .16s var(--ease); }
+.upd-banner p { margin: 0; }

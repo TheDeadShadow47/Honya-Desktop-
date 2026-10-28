@@ -50,6 +50,11 @@ export const DEFAULTS = {
   notifyUpdateComplete: true,
   notifyUpdateFailed: true,
 
+  // Honya Desktop's own updates (distinct from the library chapter refresh above). postponedUpdateVersion: the release
+  // the user chose "Later" for; it is not announced again until a newer version appears.
+  autoCheckAppUpdates: true,
+  postponedUpdateVersion: '',
+
   // Notifications master switch (mobile: notificationsEnabled)
   notificationsEnabled: true,
 
